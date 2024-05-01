@@ -1,7 +1,8 @@
-# AD prediction from exRNA in blood
+# Alzheimer's Disease prediction from exRNA in blood
 
-The goal of this project is to predict Alzheimer Disease using blood extracellular RNA. We have 3 studies available:
+The goal of this project is to predict Alzheimer Disease (AD) using blood extracellular RNA sequencing data. Currently, no gene panel is found to be able to reproducibly classify AD and control subjects across multiple research cohorts.
 
+We have 3 studies available:
 - Data from our SILVER-seq technique.
 - Data from [Toden et al.](https://advances.sciencemag.org/content/6/50/eabb1654) published on Bioproject at [this link](https://www.ncbi.nlm.nih.gov/bioproject/PRJNA574438/).
 - Data from [Burgos et al.](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0094839) uploaded on dbGaP and downloadable under official request.
