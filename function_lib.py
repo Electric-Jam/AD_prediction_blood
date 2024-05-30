@@ -18,7 +18,7 @@ import seaborn as sns
 from pydeseq2.preprocessing import deseq2_norm
 
 #Input processing functions
-def load_data(meta_path, rna_seq_path, id_col, label_col, normalize=True, pca = False, pca_n = 10):
+def load_data(meta_path, rna_seq_path, id_col, label_col, normalize=True, run_pca = False, pca_n = 10, pca_model = None):
     meta_data = _load_metadata(meta_path, id_col, label_col)
     samples_to_keep = ~meta_data.AD.isna()
     meta_data = meta_data.loc[samples_to_keep]
@@ -31,14 +31,19 @@ def load_data(meta_path, rna_seq_path, id_col, label_col, normalize=True, pca = 
     else:
         norm_rna_seq_data = rna_seq_data
 
-    if pca:
+    if run_pca:
         pca = PCA(n_components=pca_n)
         pca_data = pca.fit_transform(norm_rna_seq_data)
         norm_rna_seq_data = pd.DataFrame(pca_data, index=norm_rna_seq_data.index)
 
+    if pca_model:
+        pca_data = pca_model.transform(norm_rna_seq_data)
+        norm_rna_seq_data = pd.DataFrame(pca_data, index=norm_rna_seq_data.index)
+        pca = None
+
     merged_data = pd.merge(meta_data, norm_rna_seq_data, left_index=True, right_index=True)
 
-    return merged_data
+    return merged_data, pca
 
 def _load_metadata(meta_path, id_col, label_col):
     meta_data = pd.read_excel(meta_path)
