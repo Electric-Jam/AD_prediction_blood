@@ -18,7 +18,7 @@ import seaborn as sns
 from pydeseq2.preprocessing import deseq2_norm
 
 #Input processing functions
-def load_data(meta_path, rna_seq_path, id_col, label_col, normalize=True, run_pca = False, pca_n = 10, pca_model = None):
+def load_data(meta_path, rna_seq_path, id_col, label_col, normalize=True, run_pca=False, pca_n=10, pca_model=None, gene_list=None):
     meta_data = _load_metadata(meta_path, id_col, label_col)
     samples_to_keep = ~meta_data.AD.isna()
     meta_data = meta_data.loc[samples_to_keep]
@@ -30,6 +30,10 @@ def load_data(meta_path, rna_seq_path, id_col, label_col, normalize=True, run_pc
         norm_rna_seq_data = normalize_RNAseq(rna_seq_data)[0]
     else:
         norm_rna_seq_data = rna_seq_data
+
+    # Filter genes
+    if gene_list is not None:
+        rna_seq_data = rna_seq_data.loc[:, gene_list]
 
     if run_pca:
         pca = PCA(n_components=pca_n)
@@ -66,13 +70,12 @@ def normalize_RNAseq(rna_seq_df):
     return normalized_rnaseq
 
 # Classifying functions
-
 class SimpleNN(nn.Module):
     def __init__(self, input_dim):
         super(SimpleNN, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 50)
-        self.fc2 = nn.Linear(50, 100)
-        self.fc3 = nn.Linear(100, 1)
+        self.fc1 = nn.Linear(input_dim, 5)
+        self.fc2 = nn.Linear(5, 10)
+        self.fc3 = nn.Linear(10, 1)
         self.relu = nn.ReLU()
         self.sigmoid = nn.Sigmoid()
         
@@ -98,27 +101,32 @@ class PyTorchClassifier:
         dataset = TensorDataset(X, y)
         dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
         
-        max_f1 = 0
+        best_loss = float('inf')
         best_model = None
         for epoch in range(self.epochs):
             self.model.train()
+            epoch_loss = 0.0
             for data, target in dataloader:
                 self.optimizer.zero_grad()
                 output = self.model(data)
                 loss = self.criterion(output, target)
                 loss.backward()
                 self.optimizer.step()
-                
+                epoch_loss += loss.item()
+            
+            epoch_loss /= len(dataloader)
+            self.model.eval()
+            with torch.no_grad():
+                output = self.model(X)
+                predictions = (output > 0.5).float()
+                f1 = f1_score(y, predictions)
+            
             if (epoch + 1) % 20 == 0 or epoch == self.epochs - 1:
-                self.model.eval()
-                with torch.no_grad():
-                    output = self.model(X)
-                    predictions = (output > 0.5).float()
-                    f1 = f1_score(y, predictions)
-                    print(f"Epoch {epoch+1}/{self.epochs}, F1 Score: {f1:.4f}")
-                    if f1 > max_f1:
-                        max_f1 = f1
-                        best_model = self.model.state_dict()
+                print(f"Epoch {epoch+1}/{self.epochs}, Loss: {epoch_loss:.4f}, F1 Score: {f1:.4f}")
+
+            if epoch_loss < best_loss:
+                best_loss = epoch_loss
+                best_model = self.model.state_dict()
         
         self.model.load_state_dict(best_model)
         torch.save(self.model.state_dict(), 'best_model.pth')
@@ -169,7 +177,7 @@ def Classifier(data, best_model_path='best_model.pth', epochs=100, batch_size=10
     X_scaled = scaler.fit_transform(X)
 
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    max_f1 = 0
+    best_loss = float('inf')
     best_model_state_dict = None
     X_test_best = None
     y_test_best = None
@@ -182,11 +190,11 @@ def Classifier(data, best_model_path='best_model.pth', epochs=100, batch_size=10
         clf.fit(X_train, y_train)
         predictions = clf.predict(X_test)
         proba_predictions = clf.predict_proba(X_test)
-        f1 = f1_score(y_test, predictions)
-        print(f"Fold {fold+1}, F1 Score: {f1:.4f}")
+        loss = clf.criterion(torch.tensor(proba_predictions, dtype=torch.float32), torch.tensor(y_test, dtype=torch.float32).view(-1, 1)).item()
+        print(f"Fold {fold+1}, Loss: {loss:.4f}")
 
-        if f1 > max_f1:
-            max_f1 = f1
+        if loss < best_loss:
+            best_loss = loss
             best_model_state_dict = clf.model.state_dict()
             X_test_best = X_test
             y_test_best = y_test
@@ -205,8 +213,6 @@ def Classifier(data, best_model_path='best_model.pth', epochs=100, batch_size=10
         plot_CM(y_test_best, predictions_best)
     
     return best_model_path
-
-
 
 # Applying to another dataset
 def apply_classifier(data, model_path, num_features=10):
